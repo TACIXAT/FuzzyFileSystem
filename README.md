@@ -2,7 +2,7 @@
 
 A format-aware file mutator implemented as a file system that is good at storing a lot of mostly similar copies of files.
 
-[!DEMO](demo.gif)
+![DEMO](demo.gif)
 
 ## Status
 
