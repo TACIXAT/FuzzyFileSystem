@@ -14,6 +14,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse"
 	"log"
 	"syscall"
+	"strings"
 )
 
 type FFSRoot struct {
@@ -21,15 +22,15 @@ type FFSRoot struct {
 }
 
 func (r *FFSRoot) OnAdd(ctx context.Context) {
-	ch := r.NewPersistentInode(
-		ctx, &FFSFile{
-			Data: []byte("hello world\n"),
-			Attr: fuse.Attr{
-				Mode: 0644,
-			},
-		}, fs.StableAttr{Ino: 2})
+	// ch := r.NewPersistentInode(
+	// 	ctx, &FFSFile{
+	// 		Data: []byte("hello world\n"),
+	// 		Attr: fuse.Attr{
+	// 			Mode: 0644,
+	// 		},
+	// 	}, fs.StableAttr{Ino: 2})
 
-	r.AddChild("file.txt", ch, false)
+	// r.AddChild("file.txt", ch, false)
 }
 
 func (r *FFSRoot) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
@@ -37,44 +38,34 @@ func (r *FFSRoot) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrO
 	return 0
 }
 
-func (r *FFSRoot) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+func (r *FFSRoot) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 	fmt.Println(name)
-	// if n.IsRoot() && name == delDir {
-	// }
+	if !r.IsRoot() || strings.Contains(name, "/") {
+		return nil, nil, 0, syscall.EPERM
+	}
 
-	var st syscall.Stat_t
-	dirName, idx := r.getBranch(&st)
-	fmt.Println(dirName)
-	// if idx > 0 {
-	// 	if errno := n.promote(); errno != 0 {
-	// 		return nil, nil, 0, errno
-	// 	}
-	// 	idx = 0
-	return nil, nil, 0, syscall.EPERM
-	// }
-	// fullPath := filepath.Join(dirName, name)
-	// r := n.root()
-	// if errno := r.rmMarker(fullPath); errno != 0 && errno != syscall.ENOENT {
-	// 	return nil, nil, 0, errno
-	// }
+	d := r.NewInode(ctx, &fs.Inode{}, fs.StableAttr{Mode: fuse.S_IFDIR})
 
-	// abs := filepath.Join(n.root().roots[0], fullPath)
-	// fd, err := syscall.Creat(abs, mode)
-	// if err != nil {
-	// 	return nil, nil, 0, err.(syscall.Errno)
-	// }
+	f := d.NewInode(ctx, &FFSFile{
+			Data: []byte{},
+			Attr: fuse.Attr{
+				Mode: 0644,
+			},
+		}, fs.StableAttr{Ino: 0})
 
-	// if err := syscall.Fstat(fd, &st); err != nil {
-	// 	// now what?
-	// 	syscall.Close(fd)
-	// 	syscall.Unlink(abs)
-	// 	return nil, nil, 0, err.(syscall.Errno)
-	// }
+	if ok := d.AddChild("0", f, true); !ok {
+		return nil, nil, 0, syscall.EBADF
+	}
 
-	// ch := n.NewInode(ctx, &unionFSNode{}, fs.StableAttr{Mode: st.Mode, Ino: st.Ino})
-	// out.FromStat(&st)
+	if ok := r.AddChild(name+"suffix", d, true); !ok {
+		return nil, nil, 0, syscall.ENOTDIR
+	} 
 
-	// return ch, fs.NewLoopbackFile(fd), 0, 0
+	for n, _ := range r.Children() {
+		fmt.Println(n)
+	}
+
+	return f, nil, 0, 0
 }
 
 var _ = (fs.NodeGetattrer)((*FFSRoot)(nil))
@@ -82,18 +73,20 @@ var _ = (fs.NodeOnAdder)((*FFSRoot)(nil))
 var _ = (fs.NodeCreater)((*FFSRoot)(nil))
 
 func main() {
-	debug := flag.Bool("debug", false, "print debug data")
+	debug := flag.Bool("d", false, "print debug data")
+	mount := flag.String("m", "", "mountpoint")
 	flag.Parse()
-	if len(flag.Args()) < 1 {
+	fmt.Println(*debug, *mount)
+	if len(*mount) == 0 {
 		log.Fatal("Usage:\n  main /some/mount/point")
 	}
 
 	opts := &fs.Options{}
 	opts.Debug = *debug
-	opts.Options = []string{
-		"rw",
-	}
-	server, err := fs.Mount(flag.Arg(0), &FFSRoot{}, opts)
+	opts.Options = []string{}
+	// 	"rw",
+	// }
+	server, err := fs.Mount(*mount, &FFSRoot{}, opts)
 	if err != nil {
 		log.Fatalf("Mount fail: %v\n", err)
 	}

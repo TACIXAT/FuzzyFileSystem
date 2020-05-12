@@ -6,18 +6,17 @@ package main
 
 import (
 	"context"
-	"sync"
-	"syscall"
-
+	"fmt"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fs"
+	"sync"
+	"syscall"
 )
 
 // FFSFile is a filesystem node that holds a read-only data
 // slice in memory.
 type FFSFile struct {
 	fs.Inode
-
 	mu   sync.Mutex
 	Data []byte
 	Attr fuse.Attr
@@ -34,6 +33,7 @@ func (f *FFSFile) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fus
 }
 
 func (f *FFSFile) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int64) (uint32, syscall.Errno) {
+	fmt.Println("CALLED WRITE", fh)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	end := int64(len(data)) + off
