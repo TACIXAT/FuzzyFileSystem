@@ -9,8 +9,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"sync"
+	"math/rand"
 	"os"
+	"sync"
 	"syscall"
 )
 
@@ -33,7 +34,7 @@ func (lidx *LockingIndex) Next() uint64 {
 }
 
 // FS implements the hello world file system.
-type FFS struct{
+type FFS struct {
 	Dir *FFSDir
 }
 
@@ -48,19 +49,19 @@ func (ffs FFS) Root() (fs.Node, error) {
 }
 
 // Dir implements both Node and Handle for the root directory.
-type FFSDir struct{
-	Name string
-	Children map[string]*FFSFile
-	Index uint64
+type FFSDir struct {
+	Name     string
+	Children map[string]*FFSWorm
+	Index    uint64
 }
 
 func NewFFSDir(name string) *FFSDir {
 	ffsd := &FFSDir{
-		Name: name,
-		Children: make(map[string]*FFSFile),
-		Index: lidx.Next(),
+		Name:     name,
+		Children: make(map[string]*FFSWorm),
+		Index:    lidx.Next(),
 	}
-	return ffsd 
+	return ffsd
 }
 
 func (ffsd *FFSDir) HashCode() string {
@@ -81,9 +82,9 @@ func (ffsd *FFSDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 }
 
 func (ffsd *FFSDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	ffsf := NewFFSFile(req.Name)
-	ffsd.Children[req.Name] = ffsf
-	return ffsf, ffsf, nil
+	ffsw := NewFFSWorm(req.Name)
+	ffsd.Children[req.Name] = ffsw
+	return ffsw, ffsw, nil
 }
 
 func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
@@ -96,68 +97,137 @@ func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	return l, nil
 }
 
-// func (ffsd *FFSDir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-// 	fmt.Println("mkdir", req.Name)
-// 	c :=  NewFFSDir(req.Name)
-// 	ffsd.Children[req.Name] = c
-// 	return c, nil
-// }
+var BatchSize int = 10
 
 // File implements both Node and Handle for the hello file.
-type FFSFile struct{
-	Name string
-	Written bool
-	Data []byte
-	Index uint64
+type FFSWorm struct {
+	Name     string
+	Written  bool
+	Data     []byte
+	Index    uint64
+	Children map[string]*FFSFile
+	Flips    map[string]uint64
 }
 
-func NewFFSFile(name string) *FFSFile {
-	ffsf := &FFSFile{
-		Name: name,
-		Written: false,
-		Data: make([]byte, 0),
-		Index: lidx.Next(),
+func NewFFSWorm(name string) *FFSWorm {
+	ffsw := &FFSWorm{
+		Name:     name,
+		Written:  false,
+		Data:     make([]byte, 0),
+		Index:    lidx.Next(),
+		Children: make(map[string]*FFSFile),
+		Flips:    make(map[string]uint64),
 	}
 
-	return ffsf
+	ffsw.Children["0"] = NewFFSFile("0", ffsw)
+
+	return ffsw
 }
 
-func (ffsf *FFSFile) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
+func (ffsw *FFSWorm) Mutate() {
+	bitc := uint64(len(ffsw.Data) * 8)
+	for i := len(ffsw.Children); i < BatchSize; i++ {
+		name := fmt.Sprintf("%d", i)
+		ffsw.Children[name] = NewFFSFile(name, ffsw)
+		ffsw.Flips[name] = rand.Uint64() % bitc
+	}
+}
+
+func (ffsw *FFSWorm) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 	return nil
 }
 
-func (ffsf *FFSFile) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = 2
-	a.Mode = 0o644
-	a.Size = uint64(len(ffsf.Data))
+func (ffsw *FFSWorm) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Inode = ffsw.Index
+	if ffsw.Written {
+		a.Mode = os.ModeDir | 0o444
+	} else {
+		a.Mode = 0o644
+	}
+	a.Size = uint64(len(ffsw.Data))
 	return nil
 }
 
-func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
-	return ffsf.Data, nil
+func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	if f, ok := ffsw.Children[name]; ok {
+		return f, nil
+	}
+	return nil, syscall.ENOENT
 }
 
-func (ffsf *FFSFile)  Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
-	if ffsf.Written {
+func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	l := make([]fuse.Dirent, 0)
+
+	for n, c := range ffsw.Children {
+		l = append(l, fuse.Dirent{c.Index, fuse.DT_File, n})
+	}
+
+	return l, nil
+}
+
+func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	if ffsw.Written {
 		return syscall.EPERM
 	}
+	ffsw.Written = true
 
 	end := req.Offset + int64(len(req.Data))
-	if int64(len(ffsf.Data)) < end {
+	if int64(len(ffsw.Data)) < end {
 		n := make([]byte, end)
-		copy(n, ffsf.Data)
-		ffsf.Data = n
+		copy(n, ffsw.Data)
+		ffsw.Data = n
 	}
 
 	start := req.Offset
-	copy(ffsf.Data[start:end], req.Data)
+	copy(ffsw.Data[start:end], req.Data)
 	resp.Size = len(req.Data)
+
+	ffsw.Mutate()
+
 	return nil
 }
 
-func (ffsf *FFSFile) Flush(ctx context.Context, req *fuse.FlushRequest) error {
-	ffsf.Written = true
+func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	return nil
+}
+
+type FFSFile struct {
+	Name  string
+	Worm  *FFSWorm
+	Index uint64
+}
+
+func NewFFSFile(name string, worm *FFSWorm) *FFSFile {
+	return &FFSFile{
+		Name:  name,
+		Worm:  worm,
+		Index: lidx.Next(),
+	}
+}
+
+func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
+	bitoff, ok := ffsf.Worm.Flips[ffsf.Name]
+	if !ok {
+		return ffsf.Worm.Data, nil
+	}
+	off := bitoff / 8
+	bit := bitoff % 8
+	sz := len(ffsf.Worm.Data)
+	data := make([]byte, sz, sz)
+	copy(data, ffsf.Worm.Data)
+	data[off] = ffsf.Worm.Data[off] ^ (1 << bit)
+	return data, nil
+}
+
+func (ffsf *FFSFile) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Inode = ffsf.Index
+	a.Mode = 0o444
+	a.Size = uint64(len(ffsf.Worm.Data))
+	return nil
+}
+
+func (ffsf *FFSFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	return ffsf, nil
 }
 
 func usage() {
