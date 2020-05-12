@@ -1,6 +1,25 @@
 # FFS
 
-The goal of this project is to create a format-aware file system that is good at storing a lot of mostly similar copies of files.
+A format-aware file mutator implemented as a file system that is good at storing a lot of mostly similar copies of files.
+
+[!DEMO](demo.gif)
+
+## Status
+
+This is a brand new project. Do not expect the interface to be very stable!!!
+
+### Goals
+
+* Guidable fuzzing
+  - Touch a mutation to use it as a seed
+  - Remove uninteresting cases
+* Format aware fuzzing
+  - Target or ignore specfic fields
+  - Intelligent mutations based on type
+* Light memory footprint
+* Serializable and sharable
+* Integrate with AFL++
+* Generate new files automatically
 
 ## Practical
 
@@ -17,14 +36,20 @@ go get # ?? idfk I'll look into this
 ### Run
 
 ```bash
-go run main.go /mnt/point
+go run main.go /mnt/ffs
 ```
 
 ### Usage
 
 ```bash
-cp file.ext /mnt/point/
-cat /mnt/point/file.ext/1
+cp file.ext /mnt/ffs/
+cat /mnt/ffs/file.ext/1
+```
+
+### Cleanup
+
+```bash
+umount /mnt/ffs
 ```
 
 ## About
@@ -33,17 +58,6 @@ cat /mnt/point/file.ext/1
 
 The project is built on top of Fuse and the [bazil/fuse](https://github.com/bazil/fuse) Go library.
 
-### Status
+### License
 
-This is a brand new project. Do not expect the interface to be very stable!!!
-
-## Goals
-
-* Guidable fuzzing
-  - Touch a mutation to use it as a seed
-  - Remove uninteresting cases
-* Format aware fuzzing
-  - Target or ignore specfic fields
-  - Intelligent mutations based on type
-* Light memory footprint
-* Serializable and sharable
+None for now. Only steel-hearted pirates may use it.

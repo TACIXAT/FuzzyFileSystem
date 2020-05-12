@@ -1,4 +1,4 @@
-// Hellofs implements a simple "hello world" file system.
+/* Copyright TACIXAT 2020 */
 package main
 
 import (
@@ -33,7 +33,7 @@ func (lidx *LockingIndex) Next() uint64 {
 	return next
 }
 
-// FS implements the hello world file system.
+// Root node
 type FFS struct {
 	Dir *FFSDir
 }
@@ -48,7 +48,6 @@ func (ffs FFS) Root() (fs.Node, error) {
 	return ffs.Dir, nil
 }
 
-// Dir implements both Node and Handle for the root directory.
 type FFSDir struct {
 	Name     string
 	Children map[string]*FFSWorm
@@ -62,10 +61,6 @@ func NewFFSDir(name string) *FFSDir {
 		Index:    lidx.Next(),
 	}
 	return ffsd
-}
-
-func (ffsd *FFSDir) HashCode() string {
-	return fmt.Sprintf("%d", ffsd.Index)
 }
 
 func (ffsd *FFSDir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -99,7 +94,7 @@ func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 var BatchSize int = 10
 
-// File implements both Node and Handle for the hello file.
+// Write once read many file-directory
 type FFSWorm struct {
 	Name     string
 	Written  bool
@@ -191,6 +186,7 @@ func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	return nil
 }
 
+// Mutation
 type FFSFile struct {
 	Name  string
 	Worm  *FFSWorm
@@ -210,6 +206,8 @@ func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
 	if !ok {
 		return ffsf.Worm.Data, nil
 	}
+	
+	// Flip a bit!
 	off := bitoff / 8
 	bit := bitoff % 8
 	sz := len(ffsf.Worm.Data)
