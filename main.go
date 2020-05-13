@@ -6,6 +6,7 @@ import (
 	"bazil.org/fuse/fs"
 	_ "bazil.org/fuse/fs/fstestutil"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +15,14 @@ import (
 	"sync"
 	"syscall"
 )
+
+var seed *int64
+var mountPoint *string
+
+func init() {
+	seed = flag.Int64("s", 0, "rand seed")
+	mountPoint = flag.String("m", "", "/mnt/point")
+}
 
 type LockingIndex struct {
 	Index uint64
@@ -49,17 +58,54 @@ func (ffs FFS) Root() (fs.Node, error) {
 }
 
 type FFSDir struct {
-	Name     string
-	Children map[string]*FFSWorm
-	Index    uint64
+	Name       string
+	Interfaces map[string]*FFSInterface
+	Children   map[string]*FFSWorm
+	Index      uint64
+}
+
+func getInfo() ([]byte, error) {
+	info := struct {
+		Seed int64 `json:"seed"`
+	}{}
+	info.Seed = *seed
+
+	out, err := json.Marshal(info)
+	if err != nil {
+		return []byte{}, nil
+	}
+
+	out = append(out, '\n')
+
+	return out, nil
+}
+
+func InfoInterface() *FFSInterface {
+	ffsiInfo := NewFFSInterface("info")
+	ffsiInfo.ReadHandler = func() ([]byte, error) {
+		return getInfo()
+	}
+
+	ffsiInfo.AttrHandler = func(a *fuse.Attr) error {
+		a.Inode = ffsiInfo.Index
+		a.Mode = 0o444
+		out, _ := getInfo()
+		a.Size = uint64(len(out))
+		return nil
+	}
+
+	return ffsiInfo
 }
 
 func NewFFSDir(name string) *FFSDir {
 	ffsd := &FFSDir{
-		Name:     name,
-		Children: make(map[string]*FFSWorm),
-		Index:    lidx.Next(),
+		Name:       name,
+		Interfaces: make(map[string]*FFSInterface),
+		Children:   make(map[string]*FFSWorm),
+		Index:      lidx.Next(),
 	}
+
+	ffsd.Interfaces["info"] = InfoInterface()
 	return ffsd
 }
 
@@ -73,6 +119,11 @@ func (ffsd *FFSDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	if f, ok := ffsd.Children[name]; ok {
 		return f, nil
 	}
+
+	if f, ok := ffsd.Interfaces[name]; ok {
+		return f, nil
+	}
+
 	return nil, syscall.ENOENT
 }
 
@@ -87,6 +138,10 @@ func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	for n, c := range ffsd.Children {
 		l = append(l, fuse.Dirent{c.Index, fuse.DT_Dir, n})
+	}
+
+	for n, i := range ffsd.Interfaces {
+		l = append(l, fuse.Dirent{i.Index, fuse.DT_File, n})
 	}
 
 	return l, nil
@@ -147,6 +202,11 @@ func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	if f, ok := ffsw.Children[name]; ok {
 		return f, nil
 	}
+
+	// if f, ok := ffsw.Interfaces[name]; ok {
+	// 	return f, nil
+	// }
+
 	return nil, syscall.ENOENT
 }
 
@@ -206,7 +266,7 @@ func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
 	if !ok {
 		return ffsf.Worm.Data, nil
 	}
-	
+
 	// Flip a bit!
 	off := bitoff / 8
 	bit := bitoff % 8
@@ -228,6 +288,44 @@ func (ffsf *FFSFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse
 	return ffsf, nil
 }
 
+type FFSIReadHandler func() ([]byte, error)
+type FFSIAttrHandler func(a *fuse.Attr) error
+
+// Mutation
+type FFSInterface struct {
+	Name        string
+	Index       uint64
+	ReadHandler FFSIReadHandler
+	AttrHandler FFSIAttrHandler
+}
+
+func NewFFSInterface(name string) *FFSInterface {
+	return &FFSInterface{
+		Name:  name,
+		Index: lidx.Next(),
+	}
+}
+
+func (ffsi *FFSInterface) ReadAll(ctx context.Context) ([]byte, error) {
+	if ffsi.ReadHandler != nil {
+		return ffsi.ReadHandler()
+	}
+
+	return nil, syscall.ENOSYS
+}
+
+func (ffsi *FFSInterface) Attr(ctx context.Context, a *fuse.Attr) error {
+	if ffsi.AttrHandler != nil {
+		return ffsi.AttrHandler(a)
+	}
+
+	return syscall.ENOSYS
+}
+
+func (ffsi *FFSInterface) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	return ffsi, nil
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  %s MOUNTPOINT\n", os.Args[0])
@@ -238,14 +336,15 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	rand.Seed(*seed)
+
+	if len(*mountPoint) == 0 {
 		usage()
 		os.Exit(2)
 	}
-	mountpoint := flag.Arg(0)
 
 	c, err := fuse.Mount(
-		mountpoint,
+		*mountPoint,
 		fuse.FSName("FuzzFileSystem"),
 		fuse.Subtype("ffs"),
 	)

@@ -1,6 +1,6 @@
 # FFS
 
-A format-aware file mutator implemented as a file system that is good at storing a lot of mostly similar copies of files.
+A format-aware file mutator implemented as an in-memory file system. With a goal of being good at storing a lot of mostly similar copies of files.
 
 ![DEMO](demo.gif)
 
