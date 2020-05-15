@@ -57,13 +57,6 @@ func (ffs FFS) Root() (fs.Node, error) {
 	return ffs.Dir, nil
 }
 
-type FFSDir struct {
-	Name       string
-	Interfaces map[string]*FFSInterface
-	Children   map[string]*FFSWorm
-	Index      uint64
-}
-
 func getInfo() ([]byte, error) {
 	info := struct {
 		Seed int64 `json:"seed"`
@@ -97,12 +90,21 @@ func InfoInterface() *FFSInterface {
 	return ffsiInfo
 }
 
+type FFSDir struct {
+	Name       string
+	Interfaces map[string]*FFSInterface
+	Children   map[string]*FFSWorm
+	Index      uint64
+	Mutex      *sync.Mutex
+}
+
 func NewFFSDir(name string) *FFSDir {
 	ffsd := &FFSDir{
 		Name:       name,
 		Interfaces: make(map[string]*FFSInterface),
 		Children:   make(map[string]*FFSWorm),
 		Index:      lidx.Next(),
+		Mutex: new(sync.Mutex),
 	}
 
 	ffsd.Interfaces["info"] = InfoInterface()
@@ -116,6 +118,10 @@ func (ffsd *FFSDir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (ffsd *FFSDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	ffsd.Mutex.Lock()
+	defer ffsd.Mutex.Unlock()
+	
+	defer 
 	if f, ok := ffsd.Children[name]; ok {
 		return f, nil
 	}
@@ -128,12 +134,20 @@ func (ffsd *FFSDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 }
 
 func (ffsd *FFSDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	ffsd.Mutex.Lock()
+	defer ffsd.Mutex.Unlock()
+	
+	defer 
 	ffsw := NewFFSWorm(req.Name)
 	ffsd.Children[req.Name] = ffsw
 	return ffsw, ffsw, nil
 }
 
 func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	ffsd.Mutex.Lock()
+	defer ffsd.Mutex.Unlock()
+	
+	defer 
 	l := make([]fuse.Dirent, 0)
 
 	for n, c := range ffsd.Children {
@@ -157,6 +171,7 @@ type FFSWorm struct {
 	Index    uint64
 	Children map[string]*FFSFile
 	Flips    map[string]uint64
+	Mutex    *sync.Mutex
 }
 
 func NewFFSWorm(name string) *FFSWorm {
@@ -167,6 +182,7 @@ func NewFFSWorm(name string) *FFSWorm {
 		Index:    lidx.Next(),
 		Children: make(map[string]*FFSFile),
 		Flips:    make(map[string]uint64),
+		Mutex:    new(sync.Mutex),
 	}
 
 	ffsw.Children["0"] = NewFFSFile("0", ffsw)
@@ -188,17 +204,28 @@ func (ffsw *FFSWorm) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 }
 
 func (ffsw *FFSWorm) Attr(ctx context.Context, a *fuse.Attr) error {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+	
+	defer 
+
 	a.Inode = ffsw.Index
 	if ffsw.Written {
 		a.Mode = os.ModeDir | 0o444
 	} else {
 		a.Mode = 0o644
 	}
+
 	a.Size = uint64(len(ffsw.Data))
 	return nil
 }
 
 func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+	
+	defer 
+
 	if f, ok := ffsw.Children[name]; ok {
 		return f, nil
 	}
@@ -211,6 +238,11 @@ func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
 }
 
 func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+	
+	defer 
+
 	l := make([]fuse.Dirent, 0)
 
 	for n, c := range ffsw.Children {
@@ -221,6 +253,11 @@ func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 }
 
 func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+	
+	defer 
+
 	if ffsw.Written {
 		return syscall.EPERM
 	}
