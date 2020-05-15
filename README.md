@@ -14,12 +14,12 @@ This is a brand new project. Do not expect the interface to be very stable!!!
   - Touch a mutation to use it as a seed
   - Remove uninteresting cases
 * Format aware fuzzing
-  - Target or ignore specfic fields
+  - Target or ignore specfic regions
   - Intelligent mutations based on type
 * Light memory footprint
 * Serializable and sharable
 * Integrate with AFL++
-* Generate new files automatically
+* Generate new files via touch
 
 ## Practical
 
@@ -36,7 +36,7 @@ go get # ?? idfk I'll look into this
 ### Run
 
 ```bash
-go run main.go /mnt/ffs
+go run main.go -mp /mnt/ffs
 ```
 
 ### Usage
@@ -44,6 +44,8 @@ go run main.go /mnt/ffs
 ```bash
 cp file.ext /mnt/ffs/
 cat /mnt/ffs/file.ext/1
+touch /mnt/ffs/file.ext/mutate
+cat /mnt/ffs/file.ext/11
 ```
 
 ### Cleanup
