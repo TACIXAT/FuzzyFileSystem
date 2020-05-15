@@ -18,10 +18,12 @@ import (
 
 var seed *int64
 var mountPoint *string
+var batchSize *uint
 
 func init() {
 	seed = flag.Int64("s", 0, "rand seed")
-	mountPoint = flag.String("m", "", "/mnt/point")
+	mountPoint = flag.String("mp", "", "/mnt/point")
+	batchSize = flag.Uint("bs", 10, "mutate batch size")
 }
 
 type LockingIndex struct {
@@ -59,9 +61,11 @@ func (ffs FFS) Root() (fs.Node, error) {
 
 func getInfo() ([]byte, error) {
 	info := struct {
-		Seed int64 `json:"seed"`
+		Seed      int64 `json:"seed"`
+		BatchSize uint  `json:"batch_size"`
 	}{}
 	info.Seed = *seed
+	info.BatchSize = *batchSize
 
 	out, err := json.Marshal(info)
 	if err != nil {
@@ -158,38 +162,63 @@ func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	return l, nil
 }
 
-var BatchSize int = 10
+func MutationInterface(ffsw *FFSWorm) *FFSInterface {
+	ffsiMutate := NewFFSInterface("mutate")
+	ffsiMutate.AttrHandler = func(a *fuse.Attr) error {
+		a.Inode = ffsiMutate.Index
+		a.Mode = 0o444
+		out, _ := getInfo()
+		a.Size = uint64(len(out))
+		return nil
+	}
+
+	ffsiMutate.SetAttrHandler = func(req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+		if req.Valid.MtimeNow() {
+			ffsw.Mutex.Lock()
+			defer ffsw.Mutex.Unlock()
+			ffsw.Mutate()
+		}
+		return nil
+	}
+
+	return ffsiMutate
+}
 
 // Write once read many file-directory
 type FFSWorm struct {
-	Name     string
-	Written  bool
-	Data     []byte
-	Index    uint64
-	Children map[string]*FFSFile
-	Flips    map[string]uint64
-	Mutex    *sync.Mutex
+	Name       string
+	Written    bool
+	Data       []byte
+	Index      uint64
+	Interfaces map[string]*FFSInterface
+	Children   map[string]*FFSFile
+	Flips      map[string]uint64
+	Mutex      *sync.Mutex
 }
 
 func NewFFSWorm(name string) *FFSWorm {
 	ffsw := &FFSWorm{
-		Name:     name,
-		Written:  false,
-		Data:     make([]byte, 0),
-		Index:    lidx.Next(),
-		Children: make(map[string]*FFSFile),
-		Flips:    make(map[string]uint64),
-		Mutex:    new(sync.Mutex),
+		Name:       name,
+		Written:    false,
+		Data:       make([]byte, 0),
+		Index:      lidx.Next(),
+		Interfaces: make(map[string]*FFSInterface),
+		Children:   make(map[string]*FFSFile),
+		Flips:      make(map[string]uint64),
+		Mutex:      new(sync.Mutex),
 	}
 
 	ffsw.Children["0"] = NewFFSFile("0", ffsw)
+
+	ffsw.Interfaces["mutate"] = MutationInterface(ffsw)
 
 	return ffsw
 }
 
 func (ffsw *FFSWorm) Mutate() {
 	bitc := uint64(len(ffsw.Data) * 8)
-	for i := len(ffsw.Children); i < BatchSize; i++ {
+	start := uint(len(ffsw.Children))
+	for i := start; i < start+*batchSize; i++ {
 		name := fmt.Sprintf("%d", i)
 		ffsw.Children[name] = NewFFSFile(name, ffsw)
 		ffsw.Flips[name] = rand.Uint64() % bitc
@@ -223,9 +252,9 @@ func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
 		return f, nil
 	}
 
-	// if f, ok := ffsw.Interfaces[name]; ok {
-	// 	return f, nil
-	// }
+	if f, ok := ffsw.Interfaces[name]; ok {
+		return f, nil
+	}
 
 	return nil, syscall.ENOENT
 }
@@ -235,6 +264,10 @@ func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	defer ffsw.Mutex.Unlock()
 
 	l := make([]fuse.Dirent, 0)
+
+	for n, i := range ffsw.Interfaces {
+		l = append(l, fuse.Dirent{i.Index, fuse.DT_File, n})
+	}
 
 	for n, c := range ffsw.Children {
 		l = append(l, fuse.Dirent{c.Index, fuse.DT_File, n})
@@ -272,7 +305,7 @@ func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	return nil
 }
 
-// Mutation
+// Mutant
 type FFSFile struct {
 	Name  string
 	Worm  *FFSWorm
@@ -315,17 +348,19 @@ func (ffsf *FFSFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse
 }
 
 type FFSIReadHandler func() ([]byte, error)
-type FFSIAttrHandler func(a *fuse.Attr) error
-type FFSIWriteHandler func(req *fuse.WriteRequest, resp *fuse.WriteResponse) error
+type FFSIAttrHandler func(*fuse.Attr) error
+type FFSIWriteHandler func(*fuse.WriteRequest, *fuse.WriteResponse) error
+type FFSISetAttrHandler func(*fuse.SetattrRequest, *fuse.SetattrResponse) error
 
 // Mutation
 type FFSInterface struct {
-	Name         string
-	Index        uint64
-	ReadHandler  FFSIReadHandler
-	AttrHandler  FFSIAttrHandler
-	WriteHandler FFSIWriteHandler
-	Mutex        *sync.Mutex
+	Name           string
+	Index          uint64
+	ReadHandler    FFSIReadHandler
+	AttrHandler    FFSIAttrHandler
+	WriteHandler   FFSIWriteHandler
+	SetAttrHandler FFSISetAttrHandler
+	Mutex          *sync.Mutex
 }
 
 func NewFFSInterface(name string) *FFSInterface {
@@ -347,6 +382,14 @@ func (ffsi *FFSInterface) ReadAll(ctx context.Context) ([]byte, error) {
 func (ffsi *FFSInterface) Attr(ctx context.Context, a *fuse.Attr) error {
 	if ffsi.AttrHandler != nil {
 		return ffsi.AttrHandler(a)
+	}
+
+	return syscall.ENOSYS
+}
+
+func (ffsi *FFSInterface) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	if ffsi.SetAttrHandler != nil {
+		return ffsi.SetAttrHandler(req, resp)
 	}
 
 	return syscall.ENOSYS
