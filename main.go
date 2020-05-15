@@ -316,14 +316,16 @@ func (ffsf *FFSFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse
 
 type FFSIReadHandler func() ([]byte, error)
 type FFSIAttrHandler func(a *fuse.Attr) error
+type FFSIWriteHandler func(req *fuse.WriteRequest, resp *fuse.WriteResponse) error
 
 // Mutation
 type FFSInterface struct {
-	Name        string
-	Index       uint64
-	ReadHandler FFSIReadHandler
-	AttrHandler FFSIAttrHandler
-	Mutex       *sync.Mutex
+	Name         string
+	Index        uint64
+	ReadHandler  FFSIReadHandler
+	AttrHandler  FFSIAttrHandler
+	WriteHandler FFSIWriteHandler
+	Mutex        *sync.Mutex
 }
 
 func NewFFSInterface(name string) *FFSInterface {
@@ -357,10 +359,11 @@ func (ffsi *FFSInterface) Open(ctx context.Context, req *fuse.OpenRequest, resp 
 func (ffsi *FFSInterface) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	ffsi.Mutex.Lock()
 	defer ffsi.Mutex.Unlock()
-	log.Println("DAT", req.Data)
+	if ffsi.WriteHandler != nil {
+		return ffsi.WriteHandler(req, resp)
+	}
 
-	resp.Size = len(req.Data)
-	return nil
+	return syscall.ENOSYS
 }
 
 func (ffsi *FFSInterface) Flush(ctx context.Context, req *fuse.FlushRequest) error {
