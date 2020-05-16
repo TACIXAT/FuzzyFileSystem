@@ -28,6 +28,8 @@ This is a brand new project. Do not expect the interface to be very stable!!!
 Requires [Golang](https://golang.org/dl/). Install fuse.
 
 ```bash
+apt install libfuse3 git
+go get bazil.org/fuse
 git clone git@github.com:tacixat/FuzzyFileSystem
 cd FuzzyFileSystem
 go get # ?? idfk I'll look into this
