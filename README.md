@@ -25,7 +25,7 @@ This is a brand new project. Do not expect the interface to be very stable!!!
 
 ### Install
 
-Requires [Golang](https://golang.org/dl/).
+Requires [Golang](https://golang.org/dl/). Install fuse.
 
 ```bash
 git clone git@github.com:tacixat/FuzzyFileSystem
@@ -36,7 +36,7 @@ go get # ?? idfk I'll look into this
 ### Run
 
 ```bash
-go run main.go -mp /mnt/ffs
+go run *.go -mp /mnt/ffs
 ```
 
 ### Usage
