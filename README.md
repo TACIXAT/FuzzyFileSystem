@@ -43,10 +43,16 @@ go run *.go -mp /mnt/ffs
 
 ```bash
 cp file.ext /mnt/ffs/
-ls -v /mnt/ffs/file.ext/
-cat /mnt/ffs/file.ext/1
-touch /mnt/ffs/file.ext/mutate
-cat /mnt/ffs/file.ext/11
+cat /mnt/ffs/file.ext/0 # original file
+touch /mnt/ffs/file.ext/mutate # create more
+ls -v /mnt/ffs/file.ext/ # 1-{batchSize} default 10
+cat /mnt/ffs/file.ext/1 # mutation number 1
+
+# only mutate the first byte
+# include: false would mean mutate anything except the first byte
+echo '{"include":true, "ranges":[{"offset": 0, "size": 1}]}' > /mnt/ffs/file.ext/mask
+touch /mnt/ffs/file.ext/mutate # mutate another batch
+cat /mnt/ffs/file.ext/11 # mutation number 11
 ```
 
 ### Cleanup

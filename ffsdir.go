@@ -96,6 +96,8 @@ func (ffsd *FFSDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *f
 
 	ffsw := NewFFSWorm(req.Name)
 	ffsd.Children[req.Name] = ffsw
+
+	resp.EntryValid = 0
 	return ffsw, ffsw, nil
 }
 
