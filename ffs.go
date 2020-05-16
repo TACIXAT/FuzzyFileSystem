@@ -6,6 +6,21 @@ import (
 	"sync"
 )
 
+// Root node
+type FFS struct {
+	Dir *FFSDir
+}
+
+func NewFFS() FFS {
+	return FFS{
+		Dir: NewFFSDir(""),
+	}
+}
+
+func (ffs FFS) Root() (fs.Node, error) {
+	return ffs.Dir, nil
+}
+
 type LockingIndex struct {
 	Index uint64
 	Mutex *sync.Mutex
@@ -22,19 +37,4 @@ func (lidx *LockingIndex) Next() uint64 {
 	next := lidx.Index
 	lidx.Index += 1
 	return next
-}
-
-// Root node
-type FFS struct {
-	Dir *FFSDir
-}
-
-func NewFFS() FFS {
-	return FFS{
-		Dir: NewFFSDir(""),
-	}
-}
-
-func (ffs FFS) Root() (fs.Node, error) {
-	return ffs.Dir, nil
 }

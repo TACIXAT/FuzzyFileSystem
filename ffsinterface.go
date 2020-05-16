@@ -4,7 +4,6 @@ package main
 import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	_ "bazil.org/fuse/fs/fstestutil"
 	"context"
 	"sync"
 	"syscall"
@@ -48,6 +47,10 @@ func (ffsi *FFSInterface) Attr(ctx context.Context, a *fuse.Attr) error {
 	}
 
 	return syscall.ENOSYS
+}
+
+func (ffsi *FFSInterface) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
+	return nil
 }
 
 func (ffsi *FFSInterface) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {

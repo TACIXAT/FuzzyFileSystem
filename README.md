@@ -43,6 +43,7 @@ go run *.go -mp /mnt/ffs
 
 ```bash
 cp file.ext /mnt/ffs/
+ls -v /mnt/ffs/file.ext/
 cat /mnt/ffs/file.ext/1
 touch /mnt/ffs/file.ext/mutate
 cat /mnt/ffs/file.ext/11
