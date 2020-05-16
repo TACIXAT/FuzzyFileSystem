@@ -280,7 +280,6 @@ func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fu
 	if ffsw.Written {
 		return syscall.EPERM
 	}
-	ffsw.Written = true
 
 	end := req.Offset + int64(len(req.Data))
 	if int64(len(ffsw.Data)) < end {
@@ -297,5 +296,8 @@ func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fu
 }
 
 func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()	
+	ffsw.Written = true
 	return nil
 }
