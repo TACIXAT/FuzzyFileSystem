@@ -17,7 +17,8 @@ import (
 type FFSWorm struct {
 	Name       string
 	Written    bool
-	Data       []byte
+	Data       [][]byte
+	Current    uint
 	Index      uint64
 	Interfaces map[string]*FFSInterface
 	Children   map[string]*FFSFile
@@ -67,12 +68,11 @@ func (ffsw *FFSWorm) include(ranges []Range) error {
 		offset := r.Offset
 
 		end := offset + r.Size
-		if end > len(ffsw.Data) {
-			end = len(ffsw.Data)
+		if end > len(ffsw.Data[ffsw.Current]) {
+			end = len(ffsw.Data[ffsw.Current])
 		}
 
 		for i := offset; i < end; i++ {
-			fmt.Println(mapping, "=>", i)
 			if _, ok := ffsw.Mapping[mapping]; ok {
 				ffsw.Mapping = old
 				return syscall.EPERM
@@ -95,7 +95,6 @@ func (ffsw *FFSWorm) exclude(ranges []Range) error {
 	start := 0
 	for _, r := range ranges {
 		for i := start; i < r.Offset; i++ {
-			fmt.Println(mapping, "=>", i)
 			mapping++
 		}
 
@@ -103,9 +102,8 @@ func (ffsw *FFSWorm) exclude(ranges []Range) error {
 	}
 
 	// space after
-	if start < len(ffsw.Data) {
-		for i := start; i < len(ffsw.Data); i++ {
-			fmt.Println(mapping, "=>", i)
+	if start < len(ffsw.Data[ffsw.Current]) {
+		for i := start; i < len(ffsw.Data[ffsw.Current]); i++ {
 			if _, ok := ffsw.Mapping[mapping]; ok {
 				ffsw.Mapping = old
 				return syscall.EPERM
@@ -138,12 +136,10 @@ func MaskInterface(ffsw *FFSWorm) *FFSInterface {
 		m := Mask{}
 		err := json.Unmarshal(req.Data, &m)
 		if err != nil {
-			fmt.Println(err)
 			return syscall.EPERM
 		}
 
 		resp.Size = len(req.Data)
-		fmt.Println("GOT", m)
 
 		if len(m.Ranges) == 0 {
 			ffsw.Mapping = make(map[int]int)
@@ -170,7 +166,8 @@ func NewFFSWorm(name string) *FFSWorm {
 	ffsw := &FFSWorm{
 		Name:       name,
 		Written:    false,
-		Data:       make([]byte, 0),
+		Data:       make([][]byte, 1),
+		Current:    0,
 		Index:      lidx.Next(),
 		Interfaces: make(map[string]*FFSInterface),
 		Children:   make(map[string]*FFSFile),
@@ -190,7 +187,8 @@ func NewFFSWorm(name string) *FFSWorm {
 
 // Caller must lock
 func (ffsw *FFSWorm) Mutate() error {
-	bitc := uint64(len(ffsw.Data) * 8)
+	d := ffsw.Data[ffsw.Current]
+	bitc := uint64(len(d) * 8)
 	if len(ffsw.Mapping) > 0 {
 		bitc = uint64(len(ffsw.Mapping) * 8)
 	}
@@ -235,7 +233,7 @@ func (ffsw *FFSWorm) Attr(ctx context.Context, a *fuse.Attr) error {
 		a.Size = 0
 	} else {
 		a.Mode = 0o644
-		a.Size = uint64(len(ffsw.Data))
+		a.Size = uint64(len(ffsw.Data[ffsw.Current]))
 	}
 
 	return nil
@@ -306,23 +304,22 @@ func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fu
 	}
 
 	end := req.Offset + int64(len(req.Data))
-	if int64(len(ffsw.Data)) < end {
+	if int64(len(ffsw.Data[ffsw.Current])) < end {
 		n := make([]byte, end)
-		copy(n, ffsw.Data)
-		ffsw.Data = n
+		copy(n, ffsw.Data[ffsw.Current])
+		ffsw.Data[ffsw.Current] = n
 	}
 
 	start := req.Offset
-	copy(ffsw.Data[start:end], req.Data)
+	copy(ffsw.Data[ffsw.Current][start:end], req.Data)
 	resp.Size = len(req.Data)
-
 	return nil
 }
 
 func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	ffsw.Mutex.Lock()
 	defer ffsw.Mutex.Unlock()
-	if len(ffsw.Data) > 0 {
+	if len(ffsw.Data[0]) > 0 {
 		ffsw.Written = true
 	}
 	return nil
