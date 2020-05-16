@@ -23,10 +23,10 @@ func NewFFSFile(name string, worm *FFSWorm) *FFSFile {
 	}
 }
 
-func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
+func (ffsf *FFSFile) getBytes() []byte {
 	bitoff, ok := ffsf.Worm.Flips[ffsf.Name]
 	if !ok {
-		return ffsf.Worm.Data, nil
+		return ffsf.Worm.Data
 	}
 
 	// Flip a bit!
@@ -36,7 +36,22 @@ func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
 	data := make([]byte, sz, sz)
 	copy(data, ffsf.Worm.Data)
 	data[off] = ffsf.Worm.Data[off] ^ (1 << bit)
-	return data, nil
+
+	return data
+}
+
+func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
+	return ffsf.getBytes(), nil
+}
+
+func (ffsf *FFSFile) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	if req.Valid.MtimeNow() {
+		ffsf.Worm.Mutex.Lock()
+		defer ffsf.Worm.Mutex.Unlock()
+		ffsf.Worm.Data = ffsf.getBytes()
+	}
+
+	return nil
 }
 
 func (ffsf *FFSFile) Attr(ctx context.Context, a *fuse.Attr) error {

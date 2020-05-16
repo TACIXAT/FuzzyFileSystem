@@ -40,7 +40,7 @@ func MutationInterface(ffsw *FFSWorm) *FFSInterface {
 		if req.Valid.MtimeNow() {
 			ffsw.Mutex.Lock()
 			defer ffsw.Mutex.Unlock()
-			ffsw.Mutate()
+			return ffsw.Mutate()
 		}
 		return nil
 	}
@@ -189,10 +189,14 @@ func NewFFSWorm(name string) *FFSWorm {
 }
 
 // Caller must lock
-func (ffsw *FFSWorm) Mutate() {
+func (ffsw *FFSWorm) Mutate() error {
 	bitc := uint64(len(ffsw.Data) * 8)
 	if len(ffsw.Mapping) > 0 {
 		bitc = uint64(len(ffsw.Mapping) * 8)
+	}
+
+	if bitc == 0 {
+		return syscall.ENOENT
 	}
 
 	end := ffsw.NextChild + *batchSize
@@ -212,6 +216,8 @@ func (ffsw *FFSWorm) Mutate() {
 	}
 
 	ffsw.NextChild = end
+
+	return nil
 }
 
 func (ffsw *FFSWorm) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
@@ -248,6 +254,24 @@ func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	}
 
 	return nil, syscall.ENOENT
+}
+
+func (ffsw *FFSWorm) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
+	if req.Name == "0" {
+		return syscall.EPERM
+	}
+
+	if _, ok := ffsw.Children[req.Name]; ok {
+		delete(ffsw.Children, req.Name)
+		delete(ffsw.Flips, req.Name)
+		return nil
+	}
+
+	if _, ok := ffsw.Interfaces[req.Name]; ok {
+		return syscall.EPERM
+	}
+
+	return syscall.ENOENT
 }
 
 func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
@@ -297,7 +321,9 @@ func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fu
 
 func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	ffsw.Mutex.Lock()
-	defer ffsw.Mutex.Unlock()	
-	ffsw.Written = true
+	defer ffsw.Mutex.Unlock()
+	if len(ffsw.Data) > 0 {
+		ffsw.Written = true
+	}
 	return nil
 }
