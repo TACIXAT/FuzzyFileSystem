@@ -1,4 +1,4 @@
-/* Copyright TACIXAT 2020 */
+/* TACIXAT 2020 */
 package main
 
 import (
