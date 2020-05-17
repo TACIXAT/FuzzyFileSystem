@@ -95,6 +95,7 @@ func (ffsw *FFSWorm) exclude(ranges []Range) error {
 	start := 0
 	for _, r := range ranges {
 		for i := start; i < r.Offset; i++ {
+			ffsw.Mapping[mapping] = i
 			mapping++
 		}
 
