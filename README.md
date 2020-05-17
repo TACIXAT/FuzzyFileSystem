@@ -129,3 +129,16 @@ SNA�AAAKE‼
 SNAAAAAKM‼
 SNAAAAAKE‼→
 ```
+
+Oh yea, you can `rm` test cases that didn't do anything cool.
+
+```bash
+$ rm /mnt/ffs/snakes/5
+```
+
+## Future
+
+* Add types to `mask->ranges`. This way it could intelligently mutate a format's field.
+* Logging for errors. The syscall errors are a little vague.
+* Logging for reproducibility. Store all the touchés and masqués.
+* De/Serialize. The storage is pretty light, so you should be able to share your sick sets.
