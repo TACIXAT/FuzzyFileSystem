@@ -40,7 +40,7 @@ func main() {
 
 	c, err := fuse.Mount(
 		*mountPoint,
-		fuse.FSName("FuzzFileSystem"),
+		fuse.FSName("FuzzyFileSystem"),
 		fuse.Subtype("ffs"),
 	)
 

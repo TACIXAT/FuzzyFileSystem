@@ -42,6 +42,18 @@ func (ffsf *FFSFile) getBytes() []byte {
 	return data
 }
 
+func (ffsf *FFSFile) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Valid = 0
+	a.Inode = ffsf.Index
+	a.Mode = 0o444
+	a.Size = uint64(len(ffsf.Worm.Data[ffsf.Underlying]))
+	return nil
+}
+
+func (ffsf *FFSFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	return ffsf, nil
+}
+
 func (ffsf *FFSFile) ReadAll(ctx context.Context) ([]byte, error) {
 	return ffsf.getBytes(), nil
 }
@@ -55,16 +67,4 @@ func (ffsf *FFSFile) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp
 	}
 
 	return nil
-}
-
-func (ffsf *FFSFile) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Valid = 0
-	a.Inode = ffsf.Index
-	a.Mode = 0o444
-	a.Size = uint64(len(ffsf.Worm.Data[ffsf.Underlying]))
-	return nil
-}
-
-func (ffsf *FFSFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
-	return ffsf, nil
 }

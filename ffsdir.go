@@ -11,42 +11,6 @@ import (
 	"syscall"
 )
 
-func getInfo() ([]byte, error) {
-	info := struct {
-		Seed      int64 `json:"seed"`
-		BatchSize uint  `json:"batch_size"`
-	}{}
-	info.Seed = *seed
-	info.BatchSize = *batchSize
-
-	out, err := json.Marshal(info)
-	if err != nil {
-		return []byte{}, nil
-	}
-
-	out = append(out, '\n')
-
-	return out, nil
-}
-
-func InfoInterface() *FFSInterface {
-	ffsiInfo := NewFFSInterface("info")
-	ffsiInfo.ReadHandler = func() ([]byte, error) {
-		return getInfo()
-	}
-
-	ffsiInfo.AttrHandler = func(a *fuse.Attr) error {
-		a.Valid = 0
-		a.Inode = ffsiInfo.Index
-		a.Mode = 0o444
-		out, _ := getInfo()
-		a.Size = uint64(len(out))
-		return nil
-	}
-
-	return ffsiInfo
-}
-
 type FFSDir struct {
 	Name       string
 	Interfaces map[string]*FFSInterface
@@ -68,11 +32,58 @@ func NewFFSDir(name string) *FFSDir {
 	return ffsd
 }
 
+func InfoInterface() *FFSInterface {
+	ffsiInfo := NewFFSInterface("info")
+	ffsiInfo.ReadHandler = func() ([]byte, error) {
+		return getInfo()
+	}
+
+	ffsiInfo.AttrHandler = func(a *fuse.Attr) error {
+		a.Valid = 0
+		a.Inode = ffsiInfo.Index
+		a.Mode = 0o444
+		out, _ := getInfo()
+		a.Size = uint64(len(out))
+		return nil
+	}
+
+	return ffsiInfo
+}
+
+func getInfo() ([]byte, error) {
+	info := struct {
+		Seed      int64 `json:"seed"`
+		BatchSize uint  `json:"batch_size"`
+	}{}
+	info.Seed = *seed
+	info.BatchSize = *batchSize
+
+	out, err := json.Marshal(info)
+	if err != nil {
+		return []byte{}, nil
+	}
+
+	out = append(out, '\n')
+
+	return out, nil
+}
+
 func (ffsd *FFSDir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Valid = 0
 	a.Inode = ffsd.Index
 	a.Mode = os.ModeDir | 0o644
 	return nil
+}
+
+func (ffsd *FFSDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	ffsd.Mutex.Lock()
+	defer ffsd.Mutex.Unlock()
+
+	ffsw := NewFFSWorm(req.Name)
+	ffsd.Children[req.Name] = ffsw
+
+	resp.EntryValid = 0
+	return ffsw, ffsw, nil
 }
 
 func (ffsd *FFSDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
@@ -88,17 +99,6 @@ func (ffsd *FFSDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	}
 
 	return nil, syscall.ENOENT
-}
-
-func (ffsd *FFSDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	ffsd.Mutex.Lock()
-	defer ffsd.Mutex.Unlock()
-
-	ffsw := NewFFSWorm(req.Name)
-	ffsd.Children[req.Name] = ffsw
-
-	resp.EntryValid = 0
-	return ffsw, ffsw, nil
 }
 
 func (ffsd *FFSDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {

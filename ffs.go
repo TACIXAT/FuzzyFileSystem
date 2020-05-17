@@ -21,6 +21,7 @@ func (ffs FFS) Root() (fs.Node, error) {
 	return ffs.Dir, nil
 }
 
+// We can probably just set Inode to 0 and have it auto generate
 type LockingIndex struct {
 	Index uint64
 	Mutex *sync.Mutex

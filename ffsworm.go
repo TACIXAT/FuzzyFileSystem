@@ -28,6 +28,30 @@ type FFSWorm struct {
 	Mutex      *sync.Mutex
 }
 
+func NewFFSWorm(name string) *FFSWorm {
+	ffsw := &FFSWorm{
+		Name:       name,
+		Written:    false,
+		Data:       make([][]byte, 1),
+		Current:    0,
+		Index:      lidx.Next(),
+		Interfaces: make(map[string]*FFSInterface),
+		Children:   make(map[string]*FFSFile),
+		Mapping:    make(map[int]int),
+		Flips:      make(map[string]uint64),
+		Mutex:      new(sync.Mutex),
+	}
+
+	ffsw.Children["0"] = NewFFSFile("0", ffsw)
+	ffsw.NextChild = 1
+
+	ffsw.Interfaces["mutate"] = MutationInterface(ffsw)
+	ffsw.Interfaces["mask"] = MaskInterface(ffsw)
+
+	return ffsw
+}
+
+// /mutate
 func MutationInterface(ffsw *FFSWorm) *FFSInterface {
 	ffsiMutate := NewFFSInterface("mutate")
 	ffsiMutate.AttrHandler = func(a *fuse.Attr) error {
@@ -49,6 +73,7 @@ func MutationInterface(ffsw *FFSWorm) *FFSInterface {
 	return ffsiMutate
 }
 
+// /mask
 type Range struct {
 	Offset int `json:"offset"`
 	Size   int `json:"size"`
@@ -163,29 +188,6 @@ func MaskInterface(ffsw *FFSWorm) *FFSInterface {
 	return ffsiMask
 }
 
-func NewFFSWorm(name string) *FFSWorm {
-	ffsw := &FFSWorm{
-		Name:       name,
-		Written:    false,
-		Data:       make([][]byte, 1),
-		Current:    0,
-		Index:      lidx.Next(),
-		Interfaces: make(map[string]*FFSInterface),
-		Children:   make(map[string]*FFSFile),
-		Mapping:    make(map[int]int),
-		Flips:      make(map[string]uint64),
-		Mutex:      new(sync.Mutex),
-	}
-
-	ffsw.Children["0"] = NewFFSFile("0", ffsw)
-	ffsw.NextChild = 1
-
-	ffsw.Interfaces["mutate"] = MutationInterface(ffsw)
-	ffsw.Interfaces["mask"] = MaskInterface(ffsw)
-
-	return ffsw
-}
-
 // Caller must lock
 func (ffsw *FFSWorm) Mutate() error {
 	d := ffsw.Data[ffsw.Current]
@@ -219,10 +221,6 @@ func (ffsw *FFSWorm) Mutate() error {
 	return nil
 }
 
-func (ffsw *FFSWorm) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
-	return nil
-}
-
 func (ffsw *FFSWorm) Attr(ctx context.Context, a *fuse.Attr) error {
 	ffsw.Mutex.Lock()
 	defer ffsw.Mutex.Unlock()
@@ -240,6 +238,25 @@ func (ffsw *FFSWorm) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+func (ffsw *FFSWorm) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+	return nil, nil, syscall.EPERM
+}
+
+func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+	if len(ffsw.Data[0]) > 0 {
+		ffsw.Written = true
+	}
+	return nil
+}
+
+func (ffsw *FFSWorm) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
+	return nil
+}
+
 func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	ffsw.Mutex.Lock()
 	defer ffsw.Mutex.Unlock()
@@ -253,6 +270,23 @@ func (ffsw *FFSWorm) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	}
 
 	return nil, syscall.ENOENT
+}
+
+func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	ffsw.Mutex.Lock()
+	defer ffsw.Mutex.Unlock()
+
+	l := make([]fuse.Dirent, 0)
+
+	for n, i := range ffsw.Interfaces {
+		l = append(l, fuse.Dirent{i.Index, fuse.DT_File, n})
+	}
+
+	for n, c := range ffsw.Children {
+		l = append(l, fuse.Dirent{c.Index, fuse.DT_File, n})
+	}
+
+	return l, nil
 }
 
 func (ffsw *FFSWorm) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
@@ -273,29 +307,6 @@ func (ffsw *FFSWorm) Remove(ctx context.Context, req *fuse.RemoveRequest) error 
 	return syscall.ENOENT
 }
 
-func (ffsw *FFSWorm) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	ffsw.Mutex.Lock()
-	defer ffsw.Mutex.Unlock()
-
-	l := make([]fuse.Dirent, 0)
-
-	for n, i := range ffsw.Interfaces {
-		l = append(l, fuse.Dirent{i.Index, fuse.DT_File, n})
-	}
-
-	for n, c := range ffsw.Children {
-		l = append(l, fuse.Dirent{c.Index, fuse.DT_File, n})
-	}
-
-	return l, nil
-}
-
-func (ffsw *FFSWorm) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	ffsw.Mutex.Lock()
-	defer ffsw.Mutex.Unlock()
-	return nil, nil, syscall.EPERM
-}
-
 func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	ffsw.Mutex.Lock()
 	defer ffsw.Mutex.Unlock()
@@ -314,14 +325,5 @@ func (ffsw *FFSWorm) Write(ctx context.Context, req *fuse.WriteRequest, resp *fu
 	start := req.Offset
 	copy(ffsw.Data[ffsw.Current][start:end], req.Data)
 	resp.Size = len(req.Data)
-	return nil
-}
-
-func (ffsw *FFSWorm) Flush(ctx context.Context, req *fuse.FlushRequest) error {
-	ffsw.Mutex.Lock()
-	defer ffsw.Mutex.Unlock()
-	if len(ffsw.Data[0]) > 0 {
-		ffsw.Written = true
-	}
 	return nil
 }

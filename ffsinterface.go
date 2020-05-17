@@ -33,14 +33,6 @@ func NewFFSInterface(name string) *FFSInterface {
 	}
 }
 
-func (ffsi *FFSInterface) ReadAll(ctx context.Context) ([]byte, error) {
-	if ffsi.ReadHandler != nil {
-		return ffsi.ReadHandler()
-	}
-
-	return nil, syscall.ENOSYS
-}
-
 func (ffsi *FFSInterface) Attr(ctx context.Context, a *fuse.Attr) error {
 	if ffsi.AttrHandler != nil {
 		return ffsi.AttrHandler(a)
@@ -49,8 +41,24 @@ func (ffsi *FFSInterface) Attr(ctx context.Context, a *fuse.Attr) error {
 	return syscall.ENOSYS
 }
 
+func (ffsi *FFSInterface) Flush(ctx context.Context, req *fuse.FlushRequest) error {
+	return nil
+}
+
 func (ffsi *FFSInterface) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	return nil
+}
+
+func (ffsi *FFSInterface) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	return ffsi, nil
+}
+
+func (ffsi *FFSInterface) ReadAll(ctx context.Context) ([]byte, error) {
+	if ffsi.ReadHandler != nil {
+		return ffsi.ReadHandler()
+	}
+
+	return nil, syscall.ENOSYS
 }
 
 func (ffsi *FFSInterface) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
@@ -61,10 +69,6 @@ func (ffsi *FFSInterface) Setattr(ctx context.Context, req *fuse.SetattrRequest,
 	return syscall.ENOSYS
 }
 
-func (ffsi *FFSInterface) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
-	return ffsi, nil
-}
-
 func (ffsi *FFSInterface) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	ffsi.Mutex.Lock()
 	defer ffsi.Mutex.Unlock()
@@ -73,8 +77,4 @@ func (ffsi *FFSInterface) Write(ctx context.Context, req *fuse.WriteRequest, res
 	}
 
 	return syscall.ENOSYS
-}
-
-func (ffsi *FFSInterface) Flush(ctx context.Context, req *fuse.FlushRequest) error {
-	return nil
 }
