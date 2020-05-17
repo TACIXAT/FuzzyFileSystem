@@ -1,6 +1,8 @@
 # FFS
 
-A file mutator implemented as an in-memory file system. 
+**A file mutator implemented as an in-memory file system.**
+
+Mutate on command. Target and ignore regions of the file. Choose new seeds from mutations. Remove uninteresting mutations to keep the directory neat. Do all this using the command line utilities you know and love. 
 
 ![OLD DEMO](demo.gif)
 *This was an early proof of concept, see full [interface](https://github.com/TACIXAT/FuzzyFileSystem#interface) below!*
