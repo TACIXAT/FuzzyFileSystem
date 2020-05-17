@@ -3,7 +3,7 @@
 A file mutator implemented as an in-memory file system. 
 
 ![OLD DEMO](demo.gif)
-*This was an early proof of concept, see full interface below!*
+*This was an early proof of concept, see full [interface](https://github.com/TACIXAT/FuzzyFileSystem#interface) below!*
 
 ## Practical
 
@@ -38,11 +38,7 @@ cd FuzzyFileSystem
 go run *.go -mp /mnt/ffs
 ```
 
-Other options -
-* `-s` to set the prg seed (default 0) 
-* `-bs` to set the batch size (default 10 mutations)
-
-### Usage
+#### Usage
 
 ```bash
 Usage of ffs:
