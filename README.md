@@ -29,10 +29,18 @@ Requires [Golang](https://golang.org/dl/). Install fuse.
 
 ```bash
 apt install libfuse3 git
-go get bazil.org/fuse
 git clone git@github.com:tacixat/FuzzyFileSystem
 cd FuzzyFileSystem
-go get # ?? idfk I'll look into this
+go get bazil.org/fuse
+```
+
+### Docker
+
+```bash
+git clone git@github.com:tacixat/FuzzyFileSystem
+cd FuzzyFileSystem
+docker build -t ffs/main .
+docker run -it --rm --cap-add SYS_ADMIN --device /dev/fuse --name ffs ffs/main
 ```
 
 ### Run
