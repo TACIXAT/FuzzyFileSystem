@@ -1,12 +1,50 @@
 # FFS
 
-A file mutator implemented as an in-memory file system.
+A file mutator implemented as an in-memory file system. 
 
-![DEMO](demo.gif)
+![OLD DEMO](demo.gif)
+*This was an early proof of concept, see full interface below!*
 
-## Inteface
+## Practical
 
+### Install
+
+#### Ubuntu / Debian
+
+Requires [Golang](https://golang.org/dl/).
+
+```bash
+sudo apt install fuse3 git
+git clone git@github.com:tacixat/FuzzyFileSystem
+go get bazil.org/fuse
+mkdir /mnt/ffs
 ```
+
+#### Docker
+
+Requires [Docker](https://www.docker.com/products/docker-desktop).
+
+```bash
+git clone git@github.com:tacixat/FuzzyFileSystem
+cd FuzzyFileSystem
+docker build -t ffs/main .
+docker run -it --rm --cap-add SYS_ADMIN --device /dev/fuse --name ffs ffs/main
+```
+
+### Run
+
+```bash
+cd FuzzyFileSystem
+go run *.go -mp /mnt/ffs
+```
+
+Other options -
+* `-s` to set the prg seed (default 0) 
+* `-bs` to set the batch size (default 10 mutations)
+
+### Usage
+
+```bash
 Usage of ffs:
   ffs -mp /some/mount/point
   -bs uint
@@ -17,6 +55,14 @@ Usage of ffs:
         rand seed (default 0)
 ```
 
+### Cleanup
+
+```bash
+umount /mnt/ffs
+```
+
+## Interface
+
 When started your mountpoint will contain a file `info`. This is to provide information about the invocation of FFS.
 
 ```
@@ -24,7 +70,7 @@ When started your mountpoint will contain a file `info`. This is to provide info
   info
 ```
 
-Interfaces take and return JSON.
+Interfaces take and return `JSON`.
 
 ```bash
 $ cat /mnt/ffs/info
@@ -64,7 +110,7 @@ SLAAAAAKES
 SNAAAAAKE‼
 ```
 
-I like that last one with the weird `!!` character. Touching that file will set it as the base for future mutations. Additionally, we'll supply a `mask` to preserve that last character and only mutate the others.
+I like that last one with the weird `!!` character. Touching that file will set it as the base for future mutations. Additionally, we'll supply a `mask` to preserve that character and only mutate the others.
 
 ```bash
 $ touch /mnt/ffs/snakes/10
@@ -87,68 +133,3 @@ SNA�AAAKE‼
 SNAAAAAKM‼
 SNAAAAAKE‼→
 ```
-
-## Practical
-
-### Install
-
-Requires [Golang](https://golang.org/dl/).
-
-```bash
-sudo apt install fuse3 git
-git clone git@github.com:tacixat/FuzzyFileSystem
-cd FuzzyFileSystem
-go get bazil.org/fuse
-mkdir /mnt/ffs
-```
-
-### Docker
-
-Requires [Docker](https://www.docker.com/products/docker-desktop).
-
-```bash
-git clone git@github.com:tacixat/FuzzyFileSystem
-cd FuzzyFileSystem
-docker build -t ffs/main .
-docker run -it --rm --cap-add SYS_ADMIN --device /dev/fuse --name ffs ffs/main
-```
-
-### Run
-
-```bash
-go run *.go -mp /mnt/ffs
-```
-
-Other options include `-s` to set the prg seed (default 0) and `-bs` to set the batch size (default 10 mutations).
-
-### Usage
-
-```bash
-cp file.ext /mnt/ffs/
-cat /mnt/ffs/file.ext/0 # original file
-touch /mnt/ffs/file.ext/mutate # create more
-ls -v /mnt/ffs/file.ext/ # 1-{batchSize} default 10
-cat /mnt/ffs/file.ext/1 # mutation number 1
-
-# only mutate the first byte
-# include: false would mean mutate anything except the first byte
-echo '{"include":true, "ranges":[{"offset": 0, "size": 1}]}' > /mnt/ffs/file.ext/mask
-touch /mnt/ffs/file.ext/mutate # mutate another batch
-cat /mnt/ffs/file.ext/11 # mutation number 11
-```
-
-### Cleanup
-
-```bash
-umount /mnt/ffs
-```
-
-## About
-
-### Tech
-
-The project is built on top of Fuse and the [bazil/fuse](https://github.com/bazil/fuse) Go library.
-
-### License
-
-None for now. Only steel-hearted pirates may use it.
