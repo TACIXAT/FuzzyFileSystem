@@ -25,16 +25,19 @@ This is a brand new project. Do not expect the interface to be very stable!!!
 
 ### Install
 
-Requires [Golang](https://golang.org/dl/). Install fuse.
+Requires [Golang](https://golang.org/dl/).
 
 ```bash
-apt install libfuse3 git
+sudo apt install fuse3 git
 git clone git@github.com:tacixat/FuzzyFileSystem
 cd FuzzyFileSystem
 go get bazil.org/fuse
+mkdir /mnt/ffs
 ```
 
 ### Docker
+
+Requires [Docker](https://www.docker.com/products/docker-desktop).
 
 ```bash
 git clone git@github.com:tacixat/FuzzyFileSystem
@@ -48,6 +51,8 @@ docker run -it --rm --cap-add SYS_ADMIN --device /dev/fuse --name ffs ffs/main
 ```bash
 go run *.go -mp /mnt/ffs
 ```
+
+Other options include `-s` to set the prg seed (default 0) and `-bs` to set the batch size (default 10 mutations).
 
 ### Usage
 
