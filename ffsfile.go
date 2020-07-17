@@ -26,20 +26,8 @@ func NewFFSFile(name string, worm *FFSWorm) *FFSFile {
 }
 
 func (ffsf *FFSFile) getBytes() []byte {
-	bitoff, ok := ffsf.Worm.Flips[ffsf.Name]
-	if !ok {
-		return ffsf.Worm.Data[ffsf.Underlying]
-	}
-
-	// Flip a bit!
-	off := bitoff / 8
-	bit := bitoff % 8
-	sz := len(ffsf.Worm.Data[ffsf.Underlying])
-	data := make([]byte, sz, sz)
-	copy(data, ffsf.Worm.Data[ffsf.Underlying])
-	data[off] = ffsf.Worm.Data[ffsf.Underlying][off] ^ (1 << bit)
-
-	return data
+	data := ffsf.Worm.Data[ffsf.Underlying]
+	return ffsf.Worm.Strategies["bit_flip"].Synthesize(data, ffsf.Name)
 }
 
 func (ffsf *FFSFile) Attr(ctx context.Context, a *fuse.Attr) error {

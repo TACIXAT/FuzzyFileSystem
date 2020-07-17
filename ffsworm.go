@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os"
 	"sync"
 	"syscall"
@@ -24,7 +23,7 @@ type FFSWorm struct {
 	Children   map[string]*FFSFile
 	NextChild  uint
 	Mapping    map[int]int
-	Flips      map[string]uint64
+	Strategies map[string]Mutator
 	Mutex      *sync.Mutex
 }
 
@@ -38,7 +37,7 @@ func NewFFSWorm(name string) *FFSWorm {
 		Interfaces: make(map[string]*FFSInterface),
 		Children:   make(map[string]*FFSFile),
 		Mapping:    make(map[int]int),
-		Flips:      make(map[string]uint64),
+		Strategies: NewStrats(),
 		Mutex:      new(sync.Mutex),
 	}
 
@@ -190,30 +189,29 @@ func MaskInterface(ffsw *FFSWorm) *FFSInterface {
 
 // Caller must lock
 func (ffsw *FFSWorm) Mutate() error {
-	d := ffsw.Data[ffsw.Current]
-	bitc := uint64(len(d) * 8)
-	if len(ffsw.Mapping) > 0 {
-		bitc = uint64(len(ffsw.Mapping) * 8)
-	}
-
-	if bitc == 0 {
-		return syscall.ENOENT
-	}
+	data := ffsw.Data[ffsw.Current]
 
 	end := ffsw.NextChild + *batchSize
+	names := make([]string, 0)
+	var err error
 	for i := ffsw.NextChild; i < end; i++ {
 		name := fmt.Sprintf("%d", i)
-		ffsw.Children[name] = NewFFSFile(name, ffsw)
 
-		flip := rand.Uint64() % bitc
-		if len(ffsw.Mapping) > 0 {
-			byte := flip / 8
-			bit := flip % 8
-			byte = uint64(ffsw.Mapping[int(byte)])
-			flip = byte*8 + bit
+		err := ffsw.Strategies["bit_flip"].Generate(data, ffsw.Mapping, name)
+		if err != nil {
+			break
 		}
 
-		ffsw.Flips[name] = flip
+		ffsw.Children[name] = NewFFSFile(name, ffsw)
+		names = append(names, name)
+	}
+
+	if err != nil {
+		for _, name := range names {
+			delete(ffsw.Children, name)
+		}
+
+		return err
 	}
 
 	ffsw.NextChild = end
@@ -296,7 +294,7 @@ func (ffsw *FFSWorm) Remove(ctx context.Context, req *fuse.RemoveRequest) error 
 
 	if _, ok := ffsw.Children[req.Name]; ok {
 		delete(ffsw.Children, req.Name)
-		delete(ffsw.Flips, req.Name)
+		ffsw.Strategies["bit_flip"].Remove(req.Name)
 		return nil
 	}
 
